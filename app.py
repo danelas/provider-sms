@@ -2,12 +2,18 @@ import os
 import json
 import datetime
 import uuid
+import requests
+import logging
+import traceback
 from flask import Flask, request, jsonify, Response
-from textmagic import TextmagicRestClient
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -15,16 +21,14 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
 
-# Initialize TextMagic client
-try:
-    textmagic_client = TextmagicRestClient(
-        username=os.getenv('TEXTMAGIC_USERNAME'),
-        token=os.getenv('TEXTMAGIC_API_KEY')
-    )
-    TEXTMAGIC_PHONE_NUMBER = os.getenv('TEXTMAGIC_PHONE_NUMBER')
-except Exception as e:
-    print(f"Error initializing TextMagic client: {e}")
-    textmagic_client = None
+# TextMagic configuration
+TEXTMAGIC_USERNAME = os.getenv('TEXTMAGIC_USERNAME')
+TEXTMAGIC_API_KEY = os.getenv('TEXTMAGIC_API_KEY')
+TEXTMAGIC_PHONE_NUMBER = os.getenv('TEXTMAGIC_PHONE_NUMBER')
+
+# Validate TextMagic configuration
+if not all([TEXTMAGIC_USERNAME, TEXTMAGIC_API_KEY, TEXTMAGIC_PHONE_NUMBER]):
+    logger.warning("TextMagic configuration is incomplete. SMS functionality will be disabled.")
 
 # Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
@@ -74,25 +78,74 @@ def get_providers(location):
         print(f"An error occurred: {error}")
         return []
 
-def send_sms(to_number, message):
-    """Send SMS using TextMagic"""
-    if not textmagic_client:
-        print("TextMagic client not initialized")
+def send_sms(to_number, message, from_number=None):
+    """Send an SMS using TextMagic's API.
+    
+    Args:
+        to_number (str): Recipient phone number in international format (e.g., '+1234567890')
+        message (str): Message content
+        from_number (str, optional): Sender ID or number. Defaults to TEXTMAGIC_PHONE_NUMBER.
+        
+    Returns:
+        str: Message ID if successful, None otherwise
+    """
+    if not all([TEXTMAGIC_USERNAME, TEXTMAGIC_API_KEY]):
+        logger.error("TextMagic credentials not configured")
         return None
         
     try:
-        # Remove any non-digit characters from the phone number
-        to_number = ''.join(filter(str.isdigit, to_number))
+        # Use provided from_number or fall back to TEXTMAGIC_PHONE_NUMBER
+        from_number = str(from_number or TEXTMAGIC_PHONE_NUMBER).strip()
+        to_number = str(to_number).strip() if to_number else None
         
-        # Send the message
-        result = textmagic_client.messages.create(
-            phones=to_number,
-            text=message,
-            from_number=TEXTMAGIC_PHONE_NUMBER
+        logger.info(f"Sending SMS - From: '{from_number}', To: '{to_number}', Message: '{message[:50]}...'")
+        
+        # Prepare the request
+        url = "https://rest.textmagic.com/api/v2/messages"
+        headers = {
+            "X-TM-Username": TEXTMAGIC_USERNAME,
+            "X-TM-Key": TEXTMAGIC_API_KEY,
+            "Content-Type": "application/json"
+        }
+        
+        # TextMagic expects phone numbers without the + sign
+        to_number = to_number.replace('+', '') if to_number else ''
+        
+        # Prepare the payload
+        payload = {
+            "text": message,
+            "phones": to_number
+        }
+        
+        # Add sender ID if provided (must be alphanumeric)
+        if from_number and from_number.isalpha() and len(from_number) <= 11:
+            payload["from"] = from_number
+        
+        # Make the API request
+        response = requests.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=10
         )
-        return result.id
+        
+        # Check the response
+        response_data = response.json()
+        logger.info(f"TextMagic API response: {response.status_code} - {response.text}")
+        
+        if response.status_code == 201:
+            message_id = response_data.get('id')
+            logger.info(f"SMS sent successfully to {to_number}, message ID: {message_id}")
+            return message_id
+        else:
+            error_msg = f"Failed to send SMS. Status: {response.status_code}, Response: {response.text}"
+            logger.error(error_msg)
+            return None
+            
     except Exception as e:
-        print(f"Error sending SMS: {e}")
+        error_msg = f"Failed to send SMS: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
         return None
 
 def extract_form_data(data):
@@ -243,14 +296,19 @@ def handle_sms():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'status': 'error', 'message': 'No data received'}), 400
+            # Try form data if JSON is empty (some webhooks send form data)
+            data = request.form.to_dict()
             
+        logger.info(f"Received SMS webhook data: {data}")
+        
         # Extract message details from TextMagic webhook
-        message_data = data.get('message', {})
-        from_number = message_data.get('from')
-        body = (message_data.get('text', '') or '').strip().upper()
+        # The structure might vary based on TextMagic's webhook format
+        message_data = data.get('message', {}) if isinstance(data, dict) else data
+        from_number = message_data.get('from') or data.get('from')
+        body = (message_data.get('text', '') or data.get('text', '') or '').strip().upper()
         
         if not from_number or not body:
+            logger.error(f"Missing required fields in webhook data. Data: {data}")
             return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
         
         # Find the job this provider is responding to
@@ -301,4 +359,5 @@ def handle_sms():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Starting server on port {port}...")
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
