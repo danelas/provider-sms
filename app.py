@@ -33,24 +33,31 @@ if not all([TEXTMAGIC_USERNAME, TEXTMAGIC_API_KEY, TEXTMAGIC_PHONE_NUMBER]):
 # Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 SHEET_ID = os.getenv('SPREADSHEET_ID')
-SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE', 'service-account.json')
+SERVICE_ACCOUNT_JSON = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
 
-# Write the service account JSON to a file
-try:
-    os.makedirs(os.path.dirname(SERVICE_ACCOUNT_FILE) or '.', exist_ok=True)
-    with open(SERVICE_ACCOUNT_FILE, 'w') as f:
-        f.write(os.getenv('GOOGLE_SHEETS_CREDENTIALS', '{}'))
-except Exception as e:
-    print(f"Error writing service account file: {e}")
+if not SERVICE_ACCOUNT_JSON:
+    logger.warning("GOOGLE_SHEETS_CREDENTIALS environment variable is not set")
+else:
+    try:
+        # Parse the service account info from the JSON string
+        service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
+        logger.info("Successfully parsed Google Sheets service account info")
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse GOOGLE_SHEETS_CREDENTIALS: {e}")
+        service_account_info = None
 
 # In-memory storage for active job requests (in production, use a database)
 active_requests = {}
 
 def get_providers(location):
     """Fetch providers from Google Sheets based on location"""
+    if not service_account_info:
+        logger.error("Google Sheets service account info not available")
+        return []
+        
     try:
-        creds = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+        creds = service_account.Credentials.from_service_account_info(
+            service_account_info, scopes=SCOPES)
         service = build('sheets', 'v4', credentials=creds)
         
         # Assuming the sheet name is 'Providers' and has columns: Name, Phone, Location, Status
