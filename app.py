@@ -33,17 +33,17 @@ if not all([TEXTMAGIC_USERNAME, TEXTMAGIC_API_KEY, TEXTMAGIC_PHONE_NUMBER]):
 # Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 SHEET_ID = os.getenv('SPREADSHEET_ID')
-SERVICE_ACCOUNT_JSON = os.getenv('GOOGLE_SHEETS_CREDENTIALS')
+SERVICE_ACCOUNT_JSON = os.getenv('GOOGLE_SHEETS_API')
 
 if not SERVICE_ACCOUNT_JSON:
-    logger.warning("GOOGLE_SHEETS_CREDENTIALS environment variable is not set")
+    logger.warning("GOOGLE_SHEETS_API environment variable is not set")
 else:
     try:
         # Parse the service account info from the JSON string
         service_account_info = json.loads(SERVICE_ACCOUNT_JSON)
         logger.info("Successfully parsed Google Sheets service account info")
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse GOOGLE_SHEETS_CREDENTIALS: {e}")
+        logger.error(f"Failed to parse GOOGLE_SHEETS_API: {e}")
         service_account_info = None
 
 # In-memory storage for active job requests (in production, use a database)

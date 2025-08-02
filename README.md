@@ -26,14 +26,17 @@ A webhook handler for Fluent Forms that manages job acceptance via SMS using Twi
 
 ### Environment Variables
 
-Set the following environment variables in your Render dashboard:
-
-- `TEXTMAGIC_USERNAME`: Your TextMagic username (usually your email)
-- `TEXTMAGIC_API_KEY`: Your TextMagic API key
-- `TEXTMAGIC_PHONE_NUMBER`: Your TextMagic phone number in E.164 format (e.g., 1234567890)
-- `GOOGLE_SHEETS_CREDENTIALS`: The JSON content of your Google service account credentials
-- `SPREADSHEET_ID`: The ID of your Google Spreadsheet
-- `SECRET_KEY`: A secret key for Flask sessions
+1. Create a `.env` file in the root directory with the following variables:
+   ```
+   GOOGLE_SHEETS_API=your_service_account_json_here
+   SPREADSHEET_ID=your_google_sheet_id
+   TEXTMAGIC_USERNAME=your_textmagic_username
+   TEXTMAGIC_API_KEY=your_textmagic_api_key
+   TEXTMAGIC_PHONE_NUMBER=your_textmagic_phone_number
+   SECRET_KEY=your_secret_key_here
+   ```
+2. For production, set these as environment variables in your hosting platform.
+3. The `GOOGLE_SHEETS_API` should be the full JSON content of your Google service account key file.
 
 ### Google Sheets Format
 
