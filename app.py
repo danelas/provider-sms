@@ -21,6 +21,15 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
 
+@app.route('/')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'running',
+        'service': 'Provider SMS Notification System',
+        'timestamp': datetime.datetime.utcnow().isoformat()
+    })
+
 # TextMagic configuration
 TEXTMAGIC_USERNAME = os.getenv('TEXTMAGIC_USERNAME')
 TEXTMAGIC_API_KEY = os.getenv('TEXTMAGIC_API_KEY')
