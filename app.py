@@ -3,7 +3,7 @@ import json
 import datetime
 import uuid
 from flask import Flask, request, jsonify, Response
-from textmagic.rest import TextmagicRestClient
+from textmagic import TextmagicRestClient
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
